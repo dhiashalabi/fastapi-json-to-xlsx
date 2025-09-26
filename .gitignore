@@ -1,0 +1,40 @@
+# Virtual environment
+venv/
+.env
+*.pyc
+__pycache__/
+*.pyo
+*.pyd
+.Python
+*.swp
+
+# Logs and database
+logs/
+*.log
+*.sqlite3
+db.sqlite3
+
+# IDE and editor settings
+.vscode/
+.idea/
+*.iml
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+
+# Python dependencies
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Pytest and coverage reports
+htmlcov/
+.coverage
+.cache/
+.tox/
+.pytest_cache/
+
+# Build and distribution
+build/
+dist/
+*.egg-info/

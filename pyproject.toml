@@ -1,0 +1,19 @@
+[project]
+name = "fastapi-json-to-xlsx"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi[standard]>=0.117.1",
+    "jinja2>=3.1.6",
+    "openpyxl>=3.1.5",
+    "pandas>=2.3.2",
+    "uvicorn>=0.37.0",
+]
+
+[dependency-groups]
+dev = [
+    "pre-commit>=4.3.0",
+    "ruff>=0.13.2",
+]

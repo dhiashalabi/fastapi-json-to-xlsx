@@ -1,0 +1,36 @@
+# Use latest Ruff settings
+line-length = 88  # Same as Black
+indent-width = 4 # Same as Black
+target-version = "py312"  # Set to your Python version
+
+[lint]
+# Enable recommended linting rules
+select = [
+    "E",  # pycodestyle errors
+    "F",  # Pyflakes (unused imports, undefined names, etc.)
+    "I",  # isort (import sorting)
+    "UP", # pyupgrade (modern syntax)
+    "B",  # flake8-bugbear (best practices)
+    "ASYNC", # async-specific rules
+    "A",  # flake8-builtins (avoid shadowing built-ins)
+    "C4", # flake8-comprehensions (simplify comprehensions)
+    "T20", # flake8-print (warn about print statements)
+]
+
+# Ignore specific rules
+ignore = [
+    "E501", # Ignore line length (Black handles it)
+    "B008", # Ignore function calls in arguments (False positive in FastAPI dependencies)
+]
+
+[lint.isort]
+# Sorting order for imports
+known-first-party = ["app"]  # Adjust if your FastAPI app uses a specific module
+combine-as-imports = true
+force-sort-within-sections = true
+
+[format]
+# Enable Ruff formatter (alternative to Black)
+quote-style = "double"  # Use double quotes
+indent-style = "tab"
+line-ending = "lf"  # Use LF line endings
