@@ -160,13 +160,26 @@ The project structure:
 
 ```
 fastapi-json-to-xlsx/
-├── main.py                 # FastAPI application
+├── main.py                 # FastAPI application entry point
+├── src/                    # Source package
+│   ├── __init__.py        # Package initialization
+│   ├── models.py          # Pydantic models
+│   ├── validators.py      # Data validation and parsing
+│   ├── exporters.py       # Excel/CSV export functionality
+│   └── routes.py          # API routes
 ├── templates/
 │   └── index.html         # HTML interface
-├── test_converter.py      # Test suite
 ├── pyproject.toml         # Dependencies
 └── README.md              # This file
 ```
+
+### Module Structure
+
+- **`src/models.py`**: Pydantic models for request/response validation
+- **`src/validators.py`**: Data validation and parsing utilities
+- **`src/exporters.py`**: Excel and CSV export functionality
+- **`src/routes.py`**: FastAPI route definitions
+- **`main.py`**: Application entry point that imports and configures the FastAPI app
 
 ## License
 
