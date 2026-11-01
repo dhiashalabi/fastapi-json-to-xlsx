@@ -240,18 +240,45 @@ def test_too_many_rows_for_excel(monkeypatch):
 
 
 def test_preview():
-	rows = [{"n": i, "nested": {"ok": i % 2 == 0}} for i in range(25)]
+	rows = [{"n": i, "nested": {"ok": i % 2 == 0}} for i in range(75)]
 	response = preview({"Numbers": rows, "Empty": []})
 	assert response.status_code == 200
 	body = response.json()
 	first, second = body["sheets"]
 	assert first["name"] == "Numbers"
 	assert first["columns"] == ["N", "Nested Ok"]
-	assert first["total_rows"] == 25
-	assert len(first["rows"]) == 20
+	assert first["total_rows"] == 75
+	assert len(first["rows"]) == 50  # the first page
 	assert first["rows"][1] == [1, False]
 	assert second == {"name": "Empty", "columns": [], "rows": [], "total_rows": 0}
+	assert (body["sheet"], body["page"], body["page_size"]) == ("Numbers", 1, 50)
 	assert body["warnings"] == []
+
+
+def page(data, query):
+	return client.post(f"/preview?{query}", content=json.dumps(data))
+
+
+def test_preview_pages():
+	data = {"A": [{"n": i} for i in range(25)], "B": [{"m": i} for i in range(25)]}
+	body = page(data, "page=3&page_size=10&sheet=B").json()
+	a, b = body["sheets"]
+	assert [row[0] for row in b["rows"]] == list(range(20, 25))  # page 3 of B
+	assert [row[0] for row in a["rows"]] == list(range(10))  # the others: first page
+	assert (body["sheet"], body["page"]) == ("B", 3)
+	# No sheet, or one that no longer exists, means the first sheet.
+	body = page(data, "page=2&page_size=10&sheet=Gone").json()
+	assert body["sheet"] == "A"
+	assert body["sheets"][0]["rows"][0] == [10]
+	# Past the end there are no rows, but the totals still say how many there are.
+	body = page(data, "page=9&page_size=10").json()
+	assert body["sheets"][0]["rows"] == []
+	assert body["sheets"][0]["total_rows"] == 25
+
+
+@pytest.mark.parametrize("query", ["page=0", "page_size=0", "page_size=501"])
+def test_preview_page_limits(query):
+	assert page(STUDENTS, query).status_code == 422
 
 
 def test_preview_warns_about_cells_too_long_for_excel():

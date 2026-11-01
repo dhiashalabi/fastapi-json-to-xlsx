@@ -527,9 +527,14 @@ def preview_data(
 	sheets: Sheets,
 	format_type: ExportFormat,
 	headers: HeaderStyle = "readable",
-	limit: int = 20,
+	page: int = 1,
+	page_size: int = 50,
+	sheet: str | None = None,
 ) -> dict[str, Any]:
-	"""Describe what the export will contain: per sheet, its columns and first rows."""
+	"""Describe what the export will contain: each sheet's columns and a page of its rows.
+
+	`sheet` (the first sheet by default) gets page `page`; the others get their first page.
+	"""
 	tables = build_tables(sheets, format_type, headers)
 	warnings = []
 	long_cells = sum(table.long_cells for table in tables.values())
@@ -538,15 +543,24 @@ def preview_data(
 			f"{long_cells:,} cell{'s' if long_cells != 1 else ''} longer than {EXCEL_MAX_CELL_CHARS:,} "
 			"characters will be cut to fit Excel. Choose CSV to keep the full text."
 		)
+	target = sheet if sheet in tables else next(iter(tables))
+
+	def page_of(name: str, table: Table) -> list[list[Any]]:
+		start = ((page if name == target else 1) - 1) * page_size
+		return [table.cells(row) for row in table.rows[start : start + page_size]]
+
 	return {
 		"sheets": [
 			{
 				"name": name,
 				"columns": table.columns,
-				"rows": [table.cells(row) for row in table.rows[:limit]],
+				"rows": page_of(name, table),
 				"total_rows": len(table.rows),
 			}
 			for name, table in tables.items()
 		],
+		"sheet": target,
+		"page": page,
+		"page_size": page_size,
 		"warnings": warnings,
 	}
