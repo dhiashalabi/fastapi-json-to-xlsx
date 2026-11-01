@@ -1,0 +1,1535 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="description" content="Convert JSON into a formatted Excel workbook or CSV file. Preview it first, then download." />
+    <title>JSON to Excel &amp; CSV</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%2315803d'/%3E%3Cpath d='M8 8h16v16H8zM8 14h16M8 19h16M14 8v16' fill='none' stroke='white' stroke-width='2'/%3E%3C/svg%3E"
+    />
+    <style>
+      :root {
+        --bg: #f5f6f8;
+        --surface: #ffffff;
+        --surface-2: #f8f9fb;
+        --text: #111827;
+        --muted: #5b6472;
+        --border: #e3e6ea;
+        --border-strong: #c9d0d8;
+        --accent: #15803d;
+        --accent-hover: #116932;
+        --accent-text: #ffffff;
+        --accent-soft: #e9f6ee;
+        --error: #b42318;
+        --error-soft: #fef3f2;
+        --warn: #8a5300;
+        --warn-soft: #fff7e6;
+        --focus: #2563eb;
+        --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+        --shadow: 0 1px 2px rgb(16 24 40 / 5%), 0 1px 3px rgb(16 24 40 / 6%);
+        color-scheme: light;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #0d1117;
+          --surface: #151b23;
+          --surface-2: #10161d;
+          --text: #e6edf3;
+          --muted: #9aa5b1;
+          --border: #263040;
+          --border-strong: #3a4659;
+          --accent: #3fb970;
+          --accent-hover: #5cd38b;
+          --accent-text: #04220f;
+          --accent-soft: #12301f;
+          --error: #ff8a80;
+          --error-soft: #2d1414;
+          --warn: #f5c56b;
+          --warn-soft: #2b2110;
+          --focus: #60a5fa;
+          --shadow: none;
+          color-scheme: dark;
+        }
+      }
+
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", "Noto Sans Arabic", sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      h1,
+      h2,
+      p {
+        margin: 0;
+      }
+
+      button,
+      input,
+      textarea {
+        font: inherit;
+        color: inherit;
+      }
+
+      [hidden] {
+        display: none !important;
+      }
+
+      :focus-visible {
+        outline: 2px solid var(--focus);
+        outline-offset: 2px;
+      }
+
+      .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+        white-space: nowrap;
+      }
+
+      /* Header */
+      .top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 28px 16px 20px;
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        min-width: 0;
+      }
+
+      .logo {
+        display: grid;
+        place-items: center;
+        flex: none;
+        width: 42px;
+        height: 42px;
+        border-radius: 10px;
+        background: var(--accent);
+        color: var(--accent-text);
+      }
+
+      h1 {
+        font-size: 1.35rem;
+        font-weight: 650;
+        letter-spacing: -0.01em;
+      }
+
+      .tagline {
+        color: var(--muted);
+      }
+
+      .links {
+        display: flex;
+        flex: none;
+        align-items: center;
+        gap: 4px;
+      }
+
+      .links a {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 10px;
+        border-radius: 8px;
+        color: var(--muted);
+        font-weight: 500;
+        text-decoration: none;
+        white-space: nowrap;
+      }
+
+      .links a:hover {
+        color: var(--text);
+        background: var(--surface);
+      }
+
+      .stars {
+        padding: 0 7px;
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        font-size: 0.8125rem;
+        font-variant-numeric: tabular-nums;
+      }
+
+      /* Layout */
+      .layout {
+        display: grid;
+        grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr);
+        gap: 20px;
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 0 16px 40px;
+      }
+
+      .panel {
+        min-width: 0;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        box-shadow: var(--shadow);
+        padding: 20px;
+      }
+
+      .preview {
+        grid-column: 1 / -1;
+      }
+
+      .panel-head {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px 12px;
+        margin-bottom: 14px;
+      }
+
+      h2 {
+        font-size: 1rem;
+        font-weight: 650;
+      }
+
+      .step {
+        color: var(--muted);
+        font-weight: 500;
+      }
+
+      /* Buttons */
+      .tools {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+
+      .ghost {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        min-height: 34px;
+        padding: 4px 12px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: var(--surface);
+        cursor: pointer;
+        font-size: 0.875rem;
+        font-weight: 500;
+      }
+
+      .ghost:hover:not(:disabled) {
+        border-color: var(--border-strong);
+        background: var(--surface-2);
+      }
+
+      .ghost:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+
+      .primary {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        width: 100%;
+        min-height: 46px;
+        margin-top: 18px;
+        border: 0;
+        border-radius: 10px;
+        background: var(--accent);
+        color: var(--accent-text);
+        font-weight: 650;
+        cursor: pointer;
+        transition: background 0.15s ease;
+      }
+
+      .primary:hover:not(:disabled) {
+        background: var(--accent-hover);
+      }
+
+      .primary:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+
+      kbd {
+        font: 0.75rem var(--mono);
+        padding: 1px 6px;
+        border-radius: 5px;
+        background: rgb(255 255 255 / 18%);
+      }
+
+      .spinner {
+        display: none;
+        width: 16px;
+        height: 16px;
+        border: 2px solid currentColor;
+        border-right-color: transparent;
+        border-radius: 50%;
+        animation: spin 0.7s linear infinite;
+      }
+
+      .primary[aria-busy="true"] .spinner {
+        display: inline-block;
+      }
+
+      .primary[aria-busy="true"] kbd {
+        display: none;
+      }
+
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      /* Input */
+      .dropzone {
+        position: relative;
+      }
+
+      textarea,
+      .file-card {
+        width: 100%;
+        height: 340px;
+        border: 1px solid var(--border-strong);
+        border-radius: 10px;
+        background: var(--surface-2);
+      }
+
+      textarea {
+        display: block;
+        min-height: 180px;
+        padding: 14px;
+        font: 13.5px/1.55 var(--mono);
+        resize: vertical;
+        tab-size: 2;
+      }
+
+      textarea:focus {
+        outline: 2px solid var(--focus);
+        outline-offset: 1px;
+      }
+
+      textarea[aria-invalid="true"] {
+        border-color: var(--error);
+      }
+
+      textarea::placeholder {
+        color: var(--muted);
+      }
+
+      .file-card {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        padding: 24px;
+        text-align: center;
+      }
+
+      .file-card svg {
+        color: var(--accent);
+      }
+
+      .file-name {
+        max-width: 100%;
+        font-weight: 650;
+        overflow-wrap: anywhere;
+      }
+
+      .file-note {
+        max-width: 42ch;
+        color: var(--muted);
+        font-size: 0.875rem;
+      }
+
+      .drop-hint {
+        position: absolute;
+        inset: 0;
+        display: none;
+        place-items: center;
+        border: 2px dashed var(--accent);
+        border-radius: 10px;
+        background: color-mix(in srgb, var(--accent-soft) 92%, transparent);
+        color: var(--accent);
+        font-weight: 650;
+        pointer-events: none;
+      }
+
+      body.dragging .drop-hint {
+        display: grid;
+      }
+
+      .meta {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        margin-top: 10px;
+        min-height: 1.5em;
+        font-size: 0.875rem;
+        color: var(--muted);
+      }
+
+      .input-status.ok {
+        color: var(--accent);
+      }
+
+      .input-status.error {
+        color: var(--error);
+      }
+
+      .size {
+        flex: none;
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+      }
+
+      /* Options */
+      fieldset {
+        margin: 0;
+        padding: 0;
+        border: 0;
+      }
+
+      legend,
+      .label {
+        display: block;
+        margin-bottom: 8px;
+        font-size: 0.875rem;
+        font-weight: 600;
+      }
+
+      .segmented {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+        margin-bottom: 18px;
+      }
+
+      .segmented label {
+        position: relative;
+        display: grid;
+      }
+
+      .segmented input {
+        position: absolute;
+        opacity: 0;
+      }
+
+      .segmented span {
+        padding: 10px 12px;
+        border: 1px solid var(--border-strong);
+        border-radius: 10px;
+        text-align: center;
+        font-weight: 550;
+        cursor: pointer;
+      }
+
+      .segmented small {
+        display: block;
+        color: var(--muted);
+        font-size: 0.75rem;
+        font-weight: 400;
+      }
+
+      .segmented input:checked + span {
+        border-color: var(--accent);
+        background: var(--accent-soft);
+        box-shadow: inset 0 0 0 1px var(--accent);
+      }
+
+      .segmented input:focus-visible + span {
+        outline: 2px solid var(--focus);
+        outline-offset: 2px;
+      }
+
+      .filename {
+        display: flex;
+        align-items: center;
+        border: 1px solid var(--border-strong);
+        border-radius: 10px;
+        background: var(--surface-2);
+      }
+
+      .filename:focus-within {
+        outline: 2px solid var(--focus);
+        outline-offset: 1px;
+      }
+
+      .filename input {
+        flex: 1;
+        min-width: 0;
+        padding: 10px 12px;
+        border: 0;
+        background: transparent;
+        outline: none;
+      }
+
+      .filename span {
+        padding-right: 12px;
+        color: var(--muted);
+        font-family: var(--mono);
+        font-size: 0.875rem;
+      }
+
+      .check {
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+        margin-top: 16px;
+        cursor: pointer;
+        font-size: 0.875rem;
+        font-weight: 600;
+      }
+
+      .check input {
+        width: 18px;
+        height: 18px;
+        margin: 1px 0 0;
+        flex: none;
+        accent-color: var(--accent);
+      }
+
+      .check small {
+        display: block;
+        color: var(--muted);
+        font-weight: 400;
+      }
+
+      .status {
+        min-height: 1.5em;
+        margin-top: 12px;
+        font-size: 0.875rem;
+        overflow-wrap: anywhere;
+      }
+
+      .status.success {
+        color: var(--accent);
+      }
+
+      .status.error {
+        padding: 10px 12px;
+        border-radius: 8px;
+        background: var(--error-soft);
+        color: var(--error);
+      }
+
+      .note {
+        margin-top: 4px;
+        color: var(--muted);
+        font-size: 0.8125rem;
+      }
+
+      details {
+        margin-top: 18px;
+        padding-top: 14px;
+        border-top: 1px solid var(--border);
+        font-size: 0.875rem;
+        color: var(--muted);
+      }
+
+      summary {
+        color: var(--text);
+        font-weight: 600;
+        cursor: pointer;
+      }
+
+      details ul {
+        margin: 10px 0 0;
+        padding-left: 18px;
+      }
+
+      details li + li {
+        margin-top: 6px;
+      }
+
+      code {
+        font: 0.8125rem var(--mono);
+        color: var(--text);
+      }
+
+      /* Preview */
+      .preview-info {
+        color: var(--muted);
+        font-size: 0.875rem;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .warnings p {
+        margin-bottom: 12px;
+        padding: 10px 12px;
+        border-radius: 8px;
+        background: var(--warn-soft);
+        color: var(--warn);
+        font-size: 0.875rem;
+      }
+
+      .tabs {
+        display: flex;
+        gap: 6px;
+        overflow-x: auto;
+        margin-bottom: 12px;
+      }
+
+      .tabs:empty {
+        display: none;
+      }
+
+      .tabs button {
+        flex: none;
+        padding: 5px 12px;
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        background: var(--surface);
+        font-size: 0.875rem;
+        cursor: pointer;
+      }
+
+      .tabs button[aria-pressed="true"] {
+        border-color: var(--accent);
+        background: var(--accent-soft);
+        color: var(--accent);
+        font-weight: 600;
+      }
+
+      .tabs .count {
+        margin-left: 6px;
+        color: var(--muted);
+        font-variant-numeric: tabular-nums;
+      }
+
+      .table-wrap {
+        max-height: 520px;
+        overflow: auto;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: separate;
+        border-spacing: 0;
+        font-size: 0.8125rem;
+      }
+
+      th,
+      td {
+        max-width: 280px;
+        padding: 8px 12px;
+        border-bottom: 1px solid var(--border);
+        text-align: left;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      th {
+        position: sticky;
+        top: 0;
+        z-index: 1;
+        background: var(--surface-2);
+        font-weight: 650;
+      }
+
+      tbody tr:last-child td {
+        border-bottom: 0;
+      }
+
+      tbody tr:hover td {
+        background: var(--surface-2);
+      }
+
+      .rownum {
+        width: 1%;
+        color: var(--muted);
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+      }
+
+      td.num {
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+      }
+
+      td.bool {
+        font-family: var(--mono);
+      }
+
+      .empty {
+        padding: 48px 16px;
+        text-align: center;
+        color: var(--muted);
+      }
+
+      /* Export progress */
+      .progress {
+        margin-top: 14px;
+        padding: 12px;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        background: var(--surface-2);
+      }
+
+      .progress-steps {
+        display: flex;
+        gap: 6px;
+        margin: 0 0 10px;
+        padding: 0;
+        list-style: none;
+        font-size: 0.75rem;
+        color: var(--muted);
+      }
+
+      .progress-steps li {
+        flex: 1;
+        white-space: nowrap;
+      }
+
+      .progress-steps li::before {
+        content: "○ ";
+      }
+
+      .progress-steps li[data-state="active"] {
+        color: var(--accent);
+        font-weight: 650;
+      }
+
+      .progress-steps li[data-state="active"]::before {
+        content: "● ";
+      }
+
+      .progress-steps li[data-state="done"] {
+        color: var(--text);
+      }
+
+      .progress-steps li[data-state="done"]::before {
+        content: "✓ ";
+      }
+
+      progress {
+        display: block;
+        width: 100%;
+        height: 8px;
+        border: 0;
+        border-radius: 999px;
+        background: var(--border);
+        overflow: hidden;
+        appearance: none;
+      }
+
+      progress::-webkit-progress-bar {
+        background: var(--border);
+      }
+
+      progress::-webkit-progress-value {
+        background: var(--accent);
+        transition: width 0.2s ease;
+      }
+
+      progress::-moz-progress-bar {
+        background: var(--accent);
+      }
+
+      /* Waiting with no measurable progress: a moving band instead of a fake percentage. */
+      progress:indeterminate {
+        background: linear-gradient(90deg, var(--border) 30%, var(--accent) 50%, var(--border) 70%);
+        background-size: 300% 100%;
+        animation: waiting 1.4s linear infinite;
+      }
+
+      progress:indeterminate::-webkit-progress-bar {
+        background: transparent;
+      }
+
+      progress:indeterminate::-moz-progress-bar {
+        background: transparent;
+      }
+
+      @keyframes waiting {
+        from {
+          background-position: 100% 0;
+        }
+        to {
+          background-position: 0 0;
+        }
+      }
+
+      .progress-meta {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 10px;
+        margin-top: 8px;
+        font-size: 0.8125rem;
+        color: var(--muted);
+        font-variant-numeric: tabular-nums;
+      }
+
+      .link-button {
+        flex: none;
+        padding: 2px 4px;
+        border: 0;
+        border-radius: 6px;
+        background: none;
+        color: var(--accent);
+        font-size: 0.8125rem;
+        font-weight: 600;
+        cursor: pointer;
+      }
+
+      @media (max-width: 860px) {
+        .layout {
+          grid-template-columns: 1fr;
+        }
+
+        .top {
+          padding-top: 20px;
+        }
+
+        .tagline {
+          font-size: 0.875rem;
+        }
+
+        textarea,
+        .file-card {
+          height: 260px;
+        }
+      }
+
+      @media (max-width: 560px) {
+        .top {
+          align-items: flex-start;
+        }
+
+        .links {
+          flex-direction: column;
+          align-items: flex-end;
+        }
+
+        .tagline {
+          display: none;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        * {
+          animation: none !important;
+          transition: none !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="top">
+      <div class="brand">
+        <div class="logo" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="22" height="22">
+            <path d="M4 4h16v16H4zM4 9.5h16M4 14.5h16M10 4v16" fill="none" stroke="currentColor" stroke-width="2" />
+          </svg>
+        </div>
+        <div>
+          <h1>JSON to Excel &amp; CSV</h1>
+          <p class="tagline">Paste JSON, check the preview, download a clean spreadsheet.</p>
+        </div>
+      </div>
+      <nav class="links" aria-label="Project links">
+        <a href="https://github.com/dhiashalabi/fastapi-json-to-xlsx" id="githubLink" target="_blank" rel="noopener">
+          <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+            <path
+              fill="currentColor"
+              d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8Z"
+            />
+          </svg>
+          GitHub
+          <span class="stars" id="stars" hidden></span>
+        </a>
+        <a href="/docs">API docs</a>
+      </nav>
+    </header>
+
+    <main class="layout">
+      <section class="panel" aria-labelledby="input-title">
+        <div class="panel-head">
+          <h2 id="input-title"><span class="step">1.</span> Your JSON</h2>
+          <div class="tools">
+            <button type="button" class="ghost" id="openBtn">Open file</button>
+            <input type="file" id="fileInput" accept=".json,.jsonl,.ndjson,.txt,application/json,text/plain" hidden />
+            <button type="button" class="ghost" id="exampleBtn">Example</button>
+            <button type="button" class="ghost" id="formatBtn">Format</button>
+            <button type="button" class="ghost" id="clearBtn">Clear</button>
+          </div>
+        </div>
+        <div class="dropzone">
+          <label for="data" class="sr-only">JSON data</label>
+          <textarea
+            id="data"
+            spellcheck="false"
+            autocomplete="off"
+            autocapitalize="off"
+            aria-describedby="inputStatus"
+            placeholder='Paste JSON or JSON Lines here, or drop a file anywhere on the page.&#10;&#10;[{"name": "Ann", "age": 30}, {"name": "Omar", "age": 25}]'
+          ></textarea>
+          <div class="file-card" id="fileCard" hidden>
+            <svg viewBox="0 0 24 24" width="40" height="40" aria-hidden="true">
+              <path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8zM14 3v5h5M9 13h6M9 17h6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" />
+            </svg>
+            <p class="file-name" id="fileName"></p>
+            <p class="file-note">Too big to edit here, so it's kept as a file. Preview and download work as usual.</p>
+            <button type="button" class="ghost" id="removeFileBtn">Remove</button>
+          </div>
+          <div class="drop-hint" aria-hidden="true">Drop to load the file</div>
+        </div>
+        <div class="meta">
+          <span class="input-status" id="inputStatus"></span>
+          <span class="size" id="size"></span>
+        </div>
+      </section>
+
+      <section class="panel" aria-labelledby="options-title">
+        <div class="panel-head">
+          <h2 id="options-title"><span class="step">2.</span> Download</h2>
+        </div>
+        <fieldset class="segmented">
+          <legend>Format</legend>
+          <label>
+            <input type="radio" name="format" value="excel" checked />
+            <span>Excel<small>.xlsx · multi-sheet</small></span>
+          </label>
+          <label>
+            <input type="radio" name="format" value="csv" />
+            <span>CSV<small>.csv · one table</small></span>
+          </label>
+        </fieldset>
+        <label class="label" for="filename">File name</label>
+        <div class="filename">
+          <input id="filename" value="exported_data" maxlength="200" autocomplete="off" spellcheck="false" />
+          <span id="ext">.xlsx</span>
+        </div>
+        <label class="check">
+          <input type="checkbox" id="readable" checked />
+          <span>Readable column names<small>student_name → Student Name</small></span>
+        </label>
+        <button type="button" class="primary" id="exportBtn" disabled>
+          <span class="spinner" aria-hidden="true"></span>
+          <span id="exportLabel">Download .xlsx</span>
+          <kbd id="shortcut" aria-hidden="true">Ctrl ↵</kbd>
+        </button>
+        <div class="progress" id="progress" hidden>
+          <ol class="progress-steps">
+            <li>Compress</li>
+            <li>Upload</li>
+            <li>Convert</li>
+            <li>Download</li>
+          </ol>
+          <progress id="progressBar" max="1" aria-label="Export progress"></progress>
+          <div class="progress-meta">
+            <span id="progressDetail"></span>
+            <button type="button" class="link-button" id="cancelBtn">Cancel</button>
+          </div>
+          <span class="sr-only" id="progressAnnounce" aria-live="polite"></span>
+        </div>
+        <p class="status" id="status" role="status" aria-live="polite"></p>
+        <p class="note">Your data is converted in memory and never stored.</p>
+        <details>
+          <summary>What input works?</summary>
+          <ul>
+            <li><code>[{…}, {…}]</code> or JSON Lines (one object per line) makes one sheet.</li>
+            <li><code>{"Students": [...], "Courses": [...]}</code> makes one sheet per key (Excel only).</li>
+            <li>Nested objects get their own columns: <code>address.city</code> becomes <b>Address City</b>.</li>
+            <li>Dates like <code>2024-01-15</code> become real Excel dates; IDs over 15 digits stay exact.</li>
+            <li>Python-style input works too: single quotes, <code>True</code>/<code>None</code>.</li>
+          </ul>
+        </details>
+        <details>
+          <summary>Limits</summary>
+          <ul>
+            <li>Excel: 1,048,575 rows, 16,384 columns and 32,767 characters per cell.</li>
+            <li>Hosted on Vercel: 4.5 MB per upload after compression, which is often 20 MB+ of JSON.</li>
+            <li>Run it yourself for bigger data: up to 100 MB by default.</li>
+          </ul>
+        </details>
+      </section>
+
+      <section class="panel preview" aria-labelledby="preview-title">
+        <div class="panel-head">
+          <h2 id="preview-title">Preview</h2>
+          <span class="preview-info" id="previewInfo"></span>
+        </div>
+        <div class="warnings" id="warnings"></div>
+        <div class="tabs" id="tabs" role="group" aria-label="Sheets"></div>
+        <div class="table-wrap" id="previewBody" tabindex="0" aria-label="Preview table"></div>
+      </section>
+    </main>
+
+    <script>
+      const $ = (id) => document.getElementById(id);
+      const els = {
+        data: $("data"),
+        fileInput: $("fileInput"),
+        fileCard: $("fileCard"),
+        fileName: $("fileName"),
+        formatBtn: $("formatBtn"),
+        filename: $("filename"),
+        readable: $("readable"),
+        ext: $("ext"),
+        exportBtn: $("exportBtn"),
+        exportLabel: $("exportLabel"),
+        status: $("status"),
+        inputStatus: $("inputStatus"),
+        size: $("size"),
+        warnings: $("warnings"),
+        tabs: $("tabs"),
+        previewBody: $("previewBody"),
+        previewInfo: $("previewInfo"),
+        progress: $("progress"),
+        progressSteps: [...document.querySelectorAll(".progress-steps li")],
+        progressBar: $("progressBar"),
+        progressDetail: $("progressDetail"),
+        progressAnnounce: $("progressAnnounce"),
+      };
+
+      const EXAMPLE = {
+        Students: [
+          {
+            student_name: "John Doe",
+            email: "john@example.com",
+            address: { city: "Amman", country: "Jordan" },
+            enrolled_on: "2024-01-15",
+            active: true,
+            credits: 15,
+          },
+          {
+            student_name: "Jane Smith",
+            email: "jane@example.com",
+            address: { city: "Cairo", country: "Egypt" },
+            enrolled_on: "2024-02-03",
+            active: false,
+            credits: 12,
+          },
+        ],
+        Courses: [
+          { course_title: "Mathematics 101", credits: 3, tags: ["core", "math"] },
+          { course_title: "Physics 201", credits: 4, tags: ["science"] },
+        ],
+      };
+      // Bigger inputs stay out of the text box, which gets sluggish with megabytes of text.
+      const TEXTAREA_MAX_CHARS = 1_000_000;
+      const REPO_API = "https://api.github.com/repos/dhiashalabi/fastapi-json-to-xlsx";
+
+      let fileSource = null; // { blob, name } when the input is too big for the text box
+      let packed = null; // the last compressed upload, reused while the input is unchanged
+      let previewTimer;
+      let previewController;
+      let preview = null;
+      let activeSheet = 0;
+      let inputInvalid = false;
+
+      const format = () => document.querySelector('input[name="format"]:checked').value;
+      const extension = () => (format() === "csv" ? ".csv" : ".xlsx");
+      const plural = (n, word) => `${n.toLocaleString()} ${word}${n === 1 ? "" : "s"}`;
+      const hasInput = () => Boolean(fileSource || els.data.value.trim());
+
+      function formatBytes(bytes) {
+        if (bytes < 1024) return `${bytes} B`;
+        if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+        return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+      }
+
+      function errorText(status, text) {
+        let detail = null;
+        try {
+          detail = JSON.parse(text).detail;
+        } catch {}
+        if (typeof detail === "string") return detail;
+        if (Array.isArray(detail)) {
+          return detail.map((d) => `${(d.loc || []).slice(1).join(".") || "input"}: ${d.msg}`).join("; ");
+        }
+        if (status === 413) {
+          return "Too large to upload. Hosted deployments accept at most 4.5 MB per upload, even after compression. Split the data or run the app yourself.";
+        }
+        return `Server error (${status}). Please try again.`;
+      }
+
+      async function errorMessage(response) {
+        return errorText(response.status, await response.text().catch(() => ""));
+      }
+
+      function setStatus(kind, text) {
+        els.status.className = `status ${kind}`;
+        els.status.textContent = text;
+      }
+
+      function setInputStatus(kind, text) {
+        els.inputStatus.className = `input-status ${kind}`;
+        els.inputStatus.textContent = text;
+        els.data.setAttribute("aria-invalid", String(kind === "error"));
+      }
+
+      function updateExportButton() {
+        els.exportBtn.disabled = !hasInput() || inputInvalid;
+      }
+
+      // Uploads are gzip-compressed (JSON shrinks 5-15x), which also stretches upload size limits.
+      async function requestBody(onProgress) {
+        const blob = fileSource ? fileSource.blob : new Blob([els.data.value]);
+        if (packed && packed.blob === blob) return packed;
+        let body = blob;
+        let gzip = false;
+        if (blob.size > 32 * 1024 && "CompressionStream" in window) {
+          let read = 0;
+          const counter = new TransformStream({
+            transform(chunk, controller) {
+              read += chunk.byteLength;
+              onProgress?.(read / blob.size);
+              controller.enqueue(chunk);
+            },
+          });
+          const compressed = blob.stream().pipeThrough(counter).pipeThrough(new CompressionStream("gzip"));
+          body = await new Response(compressed).blob();
+          gzip = true;
+        }
+        packed = { blob, body, gzip };
+        els.size.textContent = gzip
+          ? `${formatBytes(blob.size)} · sends ${formatBytes(body.size)}`
+          : formatBytes(blob.size);
+        return packed;
+      }
+
+      const queryFor = (params = {}) =>
+        new URLSearchParams({ format: format(), headers: els.readable.checked ? "readable" : "original", ...params });
+
+      async function post(path, params, signal) {
+        const { body, gzip } = await requestBody();
+        const headers = { "Content-Type": "application/json" };
+        if (gzip) headers["Content-Encoding"] = "gzip";
+        return fetch(`${path}?${queryFor(params)}`, { method: "POST", headers, body, signal });
+      }
+
+      // Preview: the server parses exactly as it will for the export, so what you see is what you get.
+      function schedulePreview(delay = 300) {
+        clearTimeout(previewTimer);
+        previewController?.abort();
+        if (!hasInput()) {
+          preview = null;
+          inputInvalid = false;
+          els.size.textContent = "";
+          setInputStatus("", "");
+          renderPreview();
+          updateExportButton();
+          return;
+        }
+        if (!fileSource) els.size.textContent = formatBytes(new Blob([els.data.value]).size);
+        updateExportButton();
+        previewTimer = setTimeout(runPreview, delay);
+      }
+
+      async function runPreview() {
+        previewController = new AbortController();
+        try {
+          const response = await post("/preview", {}, previewController.signal);
+          if (!response.ok) {
+            preview = null;
+            inputInvalid = response.status < 500;
+            setInputStatus("error", await errorMessage(response));
+          } else {
+            preview = await response.json();
+            inputInvalid = false;
+            activeSheet = Math.min(activeSheet, preview.sheets.length - 1);
+            const rows = preview.sheets.reduce((sum, sheet) => sum + sheet.total_rows, 0);
+            const sheets = preview.sheets.length > 1 ? ` · ${plural(preview.sheets.length, "sheet")}` : "";
+            setInputStatus("ok", `✓ Valid${sheets} · ${plural(rows, "row")}`);
+          }
+        } catch (error) {
+          if (error.name === "AbortError") return;
+          preview = null;
+          inputInvalid = false;
+          setInputStatus("error", "Couldn't reach the server to check your data.");
+        }
+        renderPreview();
+        updateExportButton();
+      }
+
+      function emptyState(text) {
+        const p = document.createElement("p");
+        p.className = "empty";
+        p.textContent = text;
+        return p;
+      }
+
+      function renderPreview() {
+        els.tabs.replaceChildren();
+        els.previewBody.replaceChildren();
+        els.warnings.replaceChildren();
+        els.previewInfo.textContent = "";
+        if (!preview) {
+          const hint = hasInput()
+            ? "Fix the problem above to see a preview."
+            : "Paste JSON, open a file, or load the example to see a preview.";
+          els.previewBody.append(emptyState(hint));
+          return;
+        }
+
+        for (const warning of preview.warnings) {
+          const p = document.createElement("p");
+          p.textContent = `⚠ ${warning}`;
+          els.warnings.append(p);
+        }
+
+        const { sheets } = preview;
+        if (sheets.length > 1) {
+          sheets.forEach((sheet, index) => {
+            const button = document.createElement("button");
+            button.type = "button";
+            button.setAttribute("aria-pressed", String(index === activeSheet));
+            button.append(sheet.name);
+            const count = document.createElement("span");
+            count.className = "count";
+            count.textContent = sheet.total_rows.toLocaleString();
+            button.append(count);
+            button.addEventListener("click", () => {
+              activeSheet = index;
+              renderPreview();
+            });
+            els.tabs.append(button);
+          });
+        }
+
+        const sheet = sheets[activeSheet];
+        if (!sheet.columns.length) {
+          els.previewBody.append(emptyState("This sheet has no rows."));
+          return;
+        }
+        const shown = sheet.rows.length < sheet.total_rows ? `first ${sheet.rows.length} of ` : "";
+        els.previewInfo.textContent = `Showing ${shown}${plural(sheet.total_rows, "row")} · ${plural(sheet.columns.length, "column")}`;
+
+        const table = document.createElement("table");
+        const headRow = table.createTHead().insertRow();
+        ["#", ...sheet.columns].forEach((name, index) => {
+          const th = document.createElement("th");
+          th.scope = "col";
+          th.textContent = name;
+          th.title = name;
+          if (index === 0) th.className = "rownum";
+          headRow.append(th);
+        });
+        const body = table.createTBody();
+        sheet.rows.forEach((row, index) => {
+          const tr = body.insertRow();
+          const num = tr.insertCell();
+          num.className = "rownum";
+          num.textContent = index + 1;
+          for (const value of row) {
+            const td = tr.insertCell();
+            if (value === null) continue;
+            if (typeof value === "number") td.className = "num";
+            if (typeof value === "boolean") td.className = "bool";
+            td.textContent = String(value);
+            if (td.textContent.length > 30) td.title = td.textContent;
+          }
+        });
+        els.previewBody.append(table);
+      }
+
+      // Export progress. Every figure is measured: bytes compressed, bytes uploaded, the
+      // server's own estimate while converting, and bytes downloaded of the known file size.
+      const STEPS = ["compress", "upload", "convert", "download"];
+      const CONVERT_LABELS = { flatten: "Reading columns", write: "Writing rows", finish: "Packaging the file" };
+      const percent = (fraction) => `${Math.floor(fraction * 100)}%`;
+      const fromBase64 = (text) =>
+        Uint8Array.fromBase64 ? Uint8Array.fromBase64(text) : Uint8Array.from(atob(text), (c) => c.charCodeAt(0));
+      let exportRun = null; // { xhr, cancelled } while an export is running
+
+      function timeLeft(seconds) {
+        if (!(seconds >= 2)) return "";
+        return seconds < 90 ? ` · about ${Math.ceil(seconds)} s left` : ` · about ${Math.round(seconds / 60)} min left`;
+      }
+
+      function showStep(step, fraction, text) {
+        const current = STEPS.indexOf(step);
+        els.progressSteps.forEach((item, index) => {
+          item.dataset.state = index < current ? "done" : index === current ? "active" : "";
+        });
+        if (fraction === null) els.progressBar.removeAttribute("value");
+        else els.progressBar.value = fraction;
+        els.progressDetail.textContent = text;
+        const label = els.progressSteps[current].textContent;
+        if (els.progressAnnounce.textContent !== label) els.progressAnnounce.textContent = label;
+      }
+
+      function showServerEvent(event, rows) {
+        if (event.stage === "queued") showStep("convert", null, "Waiting for a free slot: other big files are converting");
+        else if (event.stage === "reading") showStep("convert", null, "Reading your data…");
+        else if (event.stage === "converting") {
+          const label = event.step === "finish" ? CONVERT_LABELS.finish : `${CONVERT_LABELS[event.step]} · ${plural(rows, "row")}`;
+          showStep("convert", event.progress, `${label} · ${percent(event.progress)}${timeLeft(event.seconds_left)}`);
+        }
+      }
+
+      // XMLHttpRequest, not fetch: only it reports upload progress. The response is a stream of
+      // JSON lines (progress events, then the file in base64 chunks), read as it arrives.
+      function sendWithProgress({ body, gzip }, run) {
+        return new Promise((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+          run.xhr = xhr;
+          xhr.open("POST", `/export-progress?${queryFor({ filename: els.filename.value })}`);
+          xhr.setRequestHeader("Content-Type", "application/json");
+          if (gzip) xhr.setRequestHeader("Content-Encoding", "gzip");
+          xhr.upload.onprogress = (event) => {
+            if (!event.lengthComputable) return;
+            showStep("upload", event.loaded / event.total, `Uploading ${formatBytes(event.loaded)} of ${formatBytes(event.total)}`);
+          };
+          xhr.upload.onload = () => showStep("convert", null, "Waiting for the server…");
+
+          let offset = 0;
+          let file = null;
+          let failure = null;
+          let received = 0;
+          let rows = 0;
+          const parts = [];
+          const readEvents = () => {
+            if (xhr.status !== 200) return; // an error reply is read once it's complete
+            const text = xhr.responseText;
+            for (let end = text.indexOf("\n", offset); end !== -1; end = text.indexOf("\n", offset)) {
+              const event = JSON.parse(text.slice(offset, end));
+              offset = end + 1;
+              if (event.data !== undefined) {
+                const bytes = fromBase64(event.data);
+                parts.push(bytes);
+                received += bytes.length;
+                showStep("download", received / file.size, `Downloading ${formatBytes(received)} of ${formatBytes(file.size)}`);
+              } else if (event.stage === "file") {
+                file = event;
+                showStep("download", 0, `Downloading ${formatBytes(file.size)}`);
+              } else if (event.stage === "error") {
+                failure = event.detail;
+              } else {
+                rows = event.rows ?? rows;
+                showServerEvent(event, rows);
+              }
+            }
+          };
+          xhr.onprogress = readEvents;
+          xhr.onload = () => {
+            if (xhr.status !== 200) return reject(new Error(errorText(xhr.status, xhr.responseText)));
+            readEvents();
+            if (failure) reject(new Error(failure));
+            else if (!file || received !== file.size) reject(new Error("The connection dropped before the whole file arrived. Please try again."));
+            else resolve({ blob: new Blob(parts, { type: file.type }), name: file.name });
+          };
+          xhr.onerror = () => reject(new TypeError("Network error"));
+          xhr.onabort = () => reject(new DOMException("Export cancelled", "AbortError"));
+          xhr.send(body);
+        });
+      }
+
+      function saveFile(blob, name) {
+        const url = URL.createObjectURL(blob);
+        const link = Object.assign(document.createElement("a"), { href: url, download: name });
+        document.body.append(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 10_000);
+      }
+
+      async function exportFile() {
+        if (els.exportBtn.disabled) return;
+        const run = { xhr: null, cancelled: false };
+        exportRun = run;
+        els.exportBtn.disabled = true;
+        els.exportBtn.setAttribute("aria-busy", "true");
+        const started = Date.now();
+        const elapsed = () => Math.round((Date.now() - started) / 1000);
+        const tick = () => (els.exportLabel.textContent = `Exporting… ${elapsed()} s`);
+        tick();
+        const timer = setInterval(tick, 1000);
+        const reveal = setTimeout(() => (els.progress.hidden = false), 300); // quick exports skip the bar
+        setStatus("", "");
+        showStep("compress", null, "Preparing your data…");
+        try {
+          const upload = await requestBody((fraction) => showStep("compress", fraction, `Compressing · ${percent(fraction)}`));
+          if (run.cancelled) throw new DOMException("Export cancelled", "AbortError");
+          const { blob, name } = await sendWithProgress(upload, run);
+          saveFile(blob, name);
+          const took = elapsed() >= 2 ? ` in ${elapsed()} s` : "";
+          setStatus("success", `✓ Downloaded ${name} (${formatBytes(blob.size)})${took}.`);
+        } catch (error) {
+          if (error.name === "AbortError") setStatus("", "Export cancelled.");
+          else setStatus("error", error instanceof TypeError ? "Couldn't reach the server. Is it running?" : error.message);
+        } finally {
+          clearTimeout(reveal);
+          clearInterval(timer);
+          els.progress.hidden = true;
+          exportRun = null;
+          els.exportBtn.removeAttribute("aria-busy");
+          syncFormat(false);
+          updateExportButton();
+        }
+      }
+
+      function useText(text) {
+        fileSource = null;
+        packed = null;
+        els.data.value = text;
+        els.data.hidden = false;
+        els.fileCard.hidden = true;
+        els.formatBtn.disabled = false;
+        schedulePreview(0);
+      }
+
+      function useFile(blob, name) {
+        fileSource = { blob, name };
+        packed = null;
+        els.data.value = "";
+        els.data.hidden = true;
+        els.fileCard.hidden = false;
+        els.fileName.textContent = `${name} · ${formatBytes(blob.size)}`;
+        els.formatBtn.disabled = true;
+        schedulePreview(0);
+      }
+
+      async function loadFile(file) {
+        if (!file) return;
+        if (file.size <= TEXTAREA_MAX_CHARS) useText(await file.text());
+        else useFile(file, file.name);
+        const base = file.name.replace(/\.[^.]+$/, "");
+        if (base) els.filename.value = base;
+        setStatus("", `Loaded ${file.name}.`);
+      }
+
+      function formatInput() {
+        const text = els.data.value;
+        if (!text.trim()) return;
+        // JSON.parse rounds integers longer than ~15 digits, so reformatting would change them.
+        if (/\d{16,}/.test(text)) {
+          setStatus("error", "Not formatted: the data has numbers too long for the browser to keep exactly. It still converts fine.");
+          return;
+        }
+        try {
+          els.data.value = JSON.stringify(JSON.parse(text), null, 2);
+          setStatus("", "");
+          schedulePreview();
+        } catch {
+          setStatus("error", "Format only works on strict JSON. JSON Lines and Python-style input still convert fine.");
+        }
+      }
+
+      function syncFormat(refresh = true) {
+        els.ext.textContent = extension();
+        els.exportLabel.textContent = `Download ${extension()}`;
+        if (refresh && hasInput()) schedulePreview(0);
+      }
+
+      async function loadStars() {
+        let stars = null;
+        try {
+          const cached = JSON.parse(sessionStorage.getItem("github-stars"));
+          if (cached && Date.now() - cached.at < 3_600_000) stars = cached.stars;
+        } catch {}
+        if (stars === null) {
+          try {
+            const response = await fetch(REPO_API);
+            if (!response.ok) return;
+            stars = (await response.json()).stargazers_count;
+          } catch {
+            return; // offline or rate-limited: keep the plain link
+          }
+          try {
+            sessionStorage.setItem("github-stars", JSON.stringify({ stars, at: Date.now() }));
+          } catch {}
+        }
+        if (typeof stars !== "number") return;
+        $("stars").textContent = `★ ${stars.toLocaleString()}`;
+        $("stars").hidden = false;
+        $("githubLink").setAttribute("aria-label", `GitHub repository, ${plural(stars, "star")}`);
+      }
+
+      els.data.addEventListener("input", () => {
+        packed = null;
+        setStatus("", "");
+        schedulePreview();
+      });
+      els.data.addEventListener("paste", (event) => {
+        const text = event.clipboardData?.getData("text") ?? "";
+        if (text.length <= TEXTAREA_MAX_CHARS) return;
+        event.preventDefault();
+        useFile(new Blob([text], { type: "application/json" }), "Pasted data");
+      });
+      document.querySelectorAll('input[name="format"]').forEach((radio) => radio.addEventListener("change", () => syncFormat()));
+      els.readable.addEventListener("change", () => hasInput() && schedulePreview(0));
+      els.exportBtn.addEventListener("click", exportFile);
+      $("cancelBtn").addEventListener("click", () => {
+        if (!exportRun) return;
+        exportRun.cancelled = true;
+        exportRun.xhr?.abort(); // the server stops converting when the connection closes
+      });
+      $("openBtn").addEventListener("click", () => els.fileInput.click());
+      els.fileInput.addEventListener("change", () => {
+        loadFile(els.fileInput.files[0]);
+        els.fileInput.value = "";
+      });
+      $("exampleBtn").addEventListener("click", () => {
+        els.filename.value = "students";
+        setStatus("", "");
+        useText(JSON.stringify(EXAMPLE, null, 2));
+      });
+      els.formatBtn.addEventListener("click", formatInput);
+      const clear = () => {
+        setStatus("", "");
+        useText("");
+        els.data.focus();
+      };
+      $("clearBtn").addEventListener("click", clear);
+      $("removeFileBtn").addEventListener("click", clear);
+
+      const isMac = /Mac|iPhone|iPad/.test(navigator.platform);
+      $("shortcut").textContent = isMac ? "⌘ ↵" : "Ctrl ↵";
+      document.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+          event.preventDefault();
+          exportFile();
+        }
+      });
+
+      // Drop a file anywhere on the page.
+      const hasFiles = (event) => event.dataTransfer && [...event.dataTransfer.types].includes("Files");
+      window.addEventListener("dragover", (event) => {
+        if (!hasFiles(event)) return;
+        event.preventDefault();
+        document.body.classList.add("dragging");
+      });
+      window.addEventListener("dragleave", (event) => {
+        if (!event.relatedTarget) document.body.classList.remove("dragging");
+      });
+      window.addEventListener("drop", (event) => {
+        if (!hasFiles(event)) return;
+        event.preventDefault();
+        document.body.classList.remove("dragging");
+        loadFile(event.dataTransfer.files[0]);
+      });
+
+      renderPreview();
+      loadStars();
+    </script>
+  </body>
+</html>

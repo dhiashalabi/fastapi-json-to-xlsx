@@ -1,186 +1,57 @@
 # JSON to Excel/CSV Converter
 
-A FastAPI-based web application that converts JSON data into Excel (.xlsx) or CSV (.csv) format with a beautiful HTML interface.
+[![CI](https://github.com/dhiashalabi/fastapi-json-to-xlsx/actions/workflows/ci.yml/badge.svg)](https://github.com/dhiashalabi/fastapi-json-to-xlsx/actions/workflows/ci.yml)
 
-## Features
+Turn JSON into a formatted Excel workbook or a CSV file. A FastAPI app with a web UI that previews the result before you download it.
 
-- 🚀 **FastAPI Backend**: High-performance API with automatic documentation
-- 📊 **Multiple Formats**: Export to Excel (.xlsx) or CSV (.csv)
-- 🎨 **Beautiful UI**: Modern, responsive HTML interface
-- 📝 **Flexible Input**: Accept JSON strings or arrays of objects
-- 🔄 **Column Transformation**: Automatically converts snake_case to Pascal Case
-- 📁 **File Download**: Direct download of generated files
-- 🔍 **Data Validation**: Comprehensive input validation and error handling
-- 📱 **Responsive Design**: Works on desktop and mobile devices
+- One sheet per key: `{"Students": [...], "Courses": [...]}` becomes a two-sheet workbook.
+- Nested objects become columns (`address.city` → **Address City**); ISO dates become real Excel dates.
+- Accepts JSON, JSON Lines, and Python-style literals. Gzip uploads are supported for large data.
+- Live progress for big files: measured upload, conversion and download progress, time left, and Cancel.
+- Safe output: no live formulas, CSV injection escaping, and long IDs kept exact.
 
-## Installation
-
-1. **Clone the repository**:
-
-   ```bash
-   git clone <repository-url>
-   cd fastapi-json-to-xlsx
-   ```
-
-2. **Install dependencies**:
-
-   ```bash
-   pip install -e .
-   ```
-
-3. **Run the application**:
-
-   ```bash
-   uvicorn main:app --reload
-   ```
-
-4. **Open your browser** and navigate to `http://localhost:8000`
-
-## Usage
-
-### Web Interface
-
-1. Open `http://localhost:8000` in your browser
-2. Paste your JSON data in the text area
-3. Select export format (Excel or CSV)
-4. Enter a filename (without extension)
-5. Click "Export Data" to download the file
-
-### API Endpoints
-
-#### POST `/export`
-
-Export data using JSON payload.
-
-**Request Body**:
-
-```json
-{
-  "data": [
-    {
-      "student_name": "John Doe",
-      "course_title": "Mathematics 101",
-      "registration_date": "2024-01-15",
-      "grade": "A"
-    }
-  ],
-  "format": "excel",
-  "filename": "student_data"
-}
-```
-
-**Response**: File download with appropriate headers.
-
-#### POST `/export-raw`
-
-Export data using raw request body (useful for large datasets).
-
-**Query Parameters**:
-
-- `format`: "excel" or "csv" (default: "excel")
-- `filename`: Output filename without extension (default: "exported_data")
-
-**Request Body**: Raw JSON string
-
-**Example**:
+## Run
 
 ```bash
-curl -X POST "http://localhost:8000/export-raw?format=csv&filename=my_data" \
-  -H "Content-Type: application/json" \
-  -d '[{"name": "John", "age": 30}]'
+uv sync
+uv run fastapi dev main.py
 ```
 
-## Example Data Format
+Open <http://localhost:8000>. Interactive API docs are at `/docs`.
 
-The application expects JSON data as an array of objects:
+## API
 
-```json
-[
-  {
-    "student_name": "John Doe",
-    "course_title": "Mathematics 101",
-    "registration_date": "2024-01-15",
-    "grade": "A",
-    "credits": 3
-  },
-  {
-    "student_name": "Jane Smith",
-    "course_title": "Physics 201",
-    "registration_date": "2024-01-20",
-    "grade": "B+",
-    "credits": 4
-  }
-]
-```
+| Endpoint | Body | Returns |
+| --- | --- | --- |
+| `POST /export` | `{"data": ..., "format": "excel", "filename": "report", "headers": "readable"}` | The file |
+| `POST /export-raw?format=csv&filename=report` | The data itself (optionally gzip) | The file |
+| `POST /export-progress?format=excel&filename=report` | The data itself (optionally gzip) | JSON lines: progress events (share done, time left), then the file in base64 chunks |
+| `POST /preview?format=excel` | The data itself (optionally gzip) | Sheets, columns, first 20 rows, warnings |
 
-## Column Name Transformation
-
-The application automatically converts snake_case column names to Pascal Case with spaces:
-
-- `student_name` → `Student Name`
-- `course_title` → `Course Title`
-- `registration_date` → `Registration Date`
-
-## Error Handling
-
-The application provides comprehensive error handling for:
-
-- Invalid JSON format
-- Empty data
-- Non-array data structures
-- Non-object items in arrays
-- Server errors
-
-## Testing
-
-Run the test suite to verify functionality:
+`format` is `excel` or `csv`. `headers` is `readable` (`student_name` → `Student Name`) or `original`.
 
 ```bash
-python test_converter.py
+gzip -c data.json | curl -X POST "http://localhost:8000/export-raw?format=excel&filename=report" \
+  -H "Content-Encoding: gzip" --data-binary @- -o report.xlsx
 ```
 
-## API Documentation
+## Limits
 
-FastAPI automatically generates interactive API documentation:
+| Limit | Value |
+| --- | --- |
+| Request size | 100 MB unpacked by default (set `MAX_DATA_MB`); memory use is about 7.5× that |
+| On Vercel | 4.5 MB per upload after gzip (the UI compresses for you), 300 s, 2 GB memory (Hobby). Downloads are streamed, so they aren't held to that 4.5 MB cap |
+| Excel | 1,048,575 rows, 16,384 columns, 32,767 characters per cell (the preview warns) |
+| Speed | 20 MB of JSON (95k rows × 9 columns): about 12 s as Excel, 3 s as CSV |
+| At once | Up to 2 big conversions (over 1 MB) run at a time; others wait their turn |
 
-- **Swagger UI**: `http://localhost:8000/docs`
-- **ReDoc**: `http://localhost:8000/redoc`
+## Develop
 
-## Dependencies
-
-- **FastAPI**: Web framework
-- **Pandas**: Data manipulation
-- **OpenPyXL**: Excel file generation
-- **Jinja2**: HTML templating
-- **Uvicorn**: ASGI server
-
-## Development
-
-The project structure:
-
-```
-fastapi-json-to-xlsx/
-├── main.py                 # FastAPI application entry point
-├── src/                    # Source package
-│   ├── __init__.py        # Package initialization
-│   ├── models.py          # Pydantic models
-│   ├── validators.py      # Data validation and parsing
-│   ├── exporters.py       # Excel/CSV export functionality
-│   └── routes.py          # API routes
-├── templates/
-│   └── index.html         # HTML interface
-├── pyproject.toml         # Dependencies
-└── README.md              # This file
+```bash
+uv run pytest
+uv run ruff check . && uv run ruff format .
 ```
 
-### Module Structure
+Deploys to Vercel with zero config (`main.py` + `pyproject.toml`), and `public/` is served from the CDN. For a public site, add a rate-limit rule in Vercel's Firewall settings.
 
-- **`src/models.py`**: Pydantic models for request/response validation
-- **`src/validators.py`**: Data validation and parsing utilities
-- **`src/exporters.py`**: Excel and CSV export functionality
-- **`src/routes.py`**: FastAPI route definitions
-- **`main.py`**: Application entry point that imports and configures the FastAPI app
-
-## License
-
-This project is open source and available under the MIT License.
+MIT, see [LICENSE](LICENSE).
