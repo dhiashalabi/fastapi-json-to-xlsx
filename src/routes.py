@@ -9,9 +9,10 @@ import zlib
 
 import anyio
 from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi.concurrency import iterate_in_threadpool
 from fastapi.responses import StreamingResponse
 
-from .exporters import export_data, preview_data
+from .exporters import event_line, export_data, export_events, preview_data
 from .models import ExportFormat, ExportRequest, HeaderStyle
 from .validators import validate_and_parse_data
 
@@ -115,6 +116,46 @@ async def export_data_raw(
 		lambda: export_data(
 			validate_and_parse_data(text), format_type, filename, headers
 		),
+	)
+
+
+@router.post("/export-progress", openapi_extra=RAW_BODY_DOCS)
+async def export_with_progress(
+	request: Request,
+	format_type: ExportFormat = Query("excel", alias="format"),
+	filename: str = Query("exported_data", max_length=200),
+	headers: HeaderStyle = "readable",
+) -> StreamingResponse:
+	"""Like /export-raw, but streams JSON lines: progress events, then the file in
+	base64 chunks. Starts with {"stage": "queued"} when it has to wait for a free slot."""
+	text = await read_body(request)
+	heavy = len(text) > HEAVY_BYTES
+
+	async def stream():
+		# Held under a token of its own: if the client leaves, this generator may be
+		# cleaned up by another task, and the slot must still be released.
+		slot = object()
+		if heavy:
+			try:
+				_heavy_slots.acquire_on_behalf_of_nowait(slot)
+			except anyio.WouldBlock:
+				yield event_line(stage="queued")
+				await _heavy_slots.acquire_on_behalf_of(slot)
+		lines = export_events(text, format_type, filename, headers)
+		try:
+			async for line in iterate_in_threadpool(lines):
+				if await request.is_disconnected():
+					break  # cancelled: stop converting now, not when the file is done
+				yield line
+		finally:
+			lines.close()  # stops unfinished work and deletes its temp files
+			if heavy:
+				_heavy_slots.release_on_behalf_of(slot)
+
+	return StreamingResponse(
+		stream(),
+		media_type="application/x-ndjson",
+		headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
 	)
 
 

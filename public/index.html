@@ -682,6 +682,122 @@
         color: var(--muted);
       }
 
+      /* Export progress */
+      .progress {
+        margin-top: 14px;
+        padding: 12px;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        background: var(--surface-2);
+      }
+
+      .progress-steps {
+        display: flex;
+        gap: 6px;
+        margin: 0 0 10px;
+        padding: 0;
+        list-style: none;
+        font-size: 0.75rem;
+        color: var(--muted);
+      }
+
+      .progress-steps li {
+        flex: 1;
+        white-space: nowrap;
+      }
+
+      .progress-steps li::before {
+        content: "○ ";
+      }
+
+      .progress-steps li[data-state="active"] {
+        color: var(--accent);
+        font-weight: 650;
+      }
+
+      .progress-steps li[data-state="active"]::before {
+        content: "● ";
+      }
+
+      .progress-steps li[data-state="done"] {
+        color: var(--text);
+      }
+
+      .progress-steps li[data-state="done"]::before {
+        content: "✓ ";
+      }
+
+      progress {
+        display: block;
+        width: 100%;
+        height: 8px;
+        border: 0;
+        border-radius: 999px;
+        background: var(--border);
+        overflow: hidden;
+        appearance: none;
+      }
+
+      progress::-webkit-progress-bar {
+        background: var(--border);
+      }
+
+      progress::-webkit-progress-value {
+        background: var(--accent);
+        transition: width 0.2s ease;
+      }
+
+      progress::-moz-progress-bar {
+        background: var(--accent);
+      }
+
+      /* Waiting with no measurable progress: a moving band instead of a fake percentage. */
+      progress:indeterminate {
+        background: linear-gradient(90deg, var(--border) 30%, var(--accent) 50%, var(--border) 70%);
+        background-size: 300% 100%;
+        animation: waiting 1.4s linear infinite;
+      }
+
+      progress:indeterminate::-webkit-progress-bar {
+        background: transparent;
+      }
+
+      progress:indeterminate::-moz-progress-bar {
+        background: transparent;
+      }
+
+      @keyframes waiting {
+        from {
+          background-position: 100% 0;
+        }
+        to {
+          background-position: 0 0;
+        }
+      }
+
+      .progress-meta {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 10px;
+        margin-top: 8px;
+        font-size: 0.8125rem;
+        color: var(--muted);
+        font-variant-numeric: tabular-nums;
+      }
+
+      .link-button {
+        flex: none;
+        padding: 2px 4px;
+        border: 0;
+        border-radius: 6px;
+        background: none;
+        color: var(--accent);
+        font-size: 0.8125rem;
+        font-weight: 600;
+        cursor: pointer;
+      }
+
       @media (max-width: 860px) {
         .layout {
           grid-template-columns: 1fr;
@@ -819,6 +935,20 @@
           <span id="exportLabel">Download .xlsx</span>
           <kbd id="shortcut" aria-hidden="true">Ctrl ↵</kbd>
         </button>
+        <div class="progress" id="progress" hidden>
+          <ol class="progress-steps">
+            <li>Compress</li>
+            <li>Upload</li>
+            <li>Convert</li>
+            <li>Download</li>
+          </ol>
+          <progress id="progressBar" max="1" aria-label="Export progress"></progress>
+          <div class="progress-meta">
+            <span id="progressDetail"></span>
+            <button type="button" class="link-button" id="cancelBtn">Cancel</button>
+          </div>
+          <span class="sr-only" id="progressAnnounce" aria-live="polite"></span>
+        </div>
         <p class="status" id="status" role="status" aria-live="polite"></p>
         <p class="note">Your data is converted in memory and never stored.</p>
         <details>
@@ -872,6 +1002,11 @@
         tabs: $("tabs"),
         previewBody: $("previewBody"),
         previewInfo: $("previewInfo"),
+        progress: $("progress"),
+        progressSteps: [...document.querySelectorAll(".progress-steps li")],
+        progressBar: $("progressBar"),
+        progressDetail: $("progressDetail"),
+        progressAnnounce: $("progressAnnounce"),
       };
 
       const EXAMPLE = {
@@ -921,17 +1056,23 @@
         return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
       }
 
-      async function errorMessage(response) {
-        const body = await response.json().catch(() => null);
-        const detail = body && body.detail;
+      function errorText(status, text) {
+        let detail = null;
+        try {
+          detail = JSON.parse(text).detail;
+        } catch {}
         if (typeof detail === "string") return detail;
         if (Array.isArray(detail)) {
           return detail.map((d) => `${(d.loc || []).slice(1).join(".") || "input"}: ${d.msg}`).join("; ");
         }
-        if (response.status === 413) {
+        if (status === 413) {
           return "Too large to upload. Hosted deployments accept at most 4.5 MB per upload, even after compression. Split the data or run the app yourself.";
         }
-        return `Server error (${response.status}). Please try again.`;
+        return `Server error (${status}). Please try again.`;
+      }
+
+      async function errorMessage(response) {
+        return errorText(response.status, await response.text().catch(() => ""));
       }
 
       function setStatus(kind, text) {
@@ -950,13 +1091,22 @@
       }
 
       // Uploads are gzip-compressed (JSON shrinks 5-15x), which also stretches upload size limits.
-      async function requestBody() {
+      async function requestBody(onProgress) {
         const blob = fileSource ? fileSource.blob : new Blob([els.data.value]);
         if (packed && packed.blob === blob) return packed;
         let body = blob;
         let gzip = false;
         if (blob.size > 32 * 1024 && "CompressionStream" in window) {
-          body = await new Response(blob.stream().pipeThrough(new CompressionStream("gzip"))).blob();
+          let read = 0;
+          const counter = new TransformStream({
+            transform(chunk, controller) {
+              read += chunk.byteLength;
+              onProgress?.(read / blob.size);
+              controller.enqueue(chunk);
+            },
+          });
+          const compressed = blob.stream().pipeThrough(counter).pipeThrough(new CompressionStream("gzip"));
+          body = await new Response(compressed).blob();
           gzip = true;
         }
         packed = { blob, body, gzip };
@@ -966,12 +1116,14 @@
         return packed;
       }
 
+      const queryFor = (params = {}) =>
+        new URLSearchParams({ format: format(), headers: els.readable.checked ? "readable" : "original", ...params });
+
       async function post(path, params, signal) {
         const { body, gzip } = await requestBody();
         const headers = { "Content-Type": "application/json" };
         if (gzip) headers["Content-Encoding"] = "gzip";
-        const query = new URLSearchParams({ format: format(), headers: els.readable.checked ? "readable" : "original", ...params });
-        return fetch(`${path}?${query}`, { method: "POST", headers, body, signal });
+        return fetch(`${path}?${queryFor(params)}`, { method: "POST", headers, body, signal });
       }
 
       // Preview: the server parses exactly as it will for the export, so what you see is what you get.
@@ -1099,44 +1251,136 @@
         els.previewBody.append(table);
       }
 
-      function filenameFromHeader(header) {
-        if (!header) return null;
-        const encoded = /filename\*=UTF-8''([^;]+)/i.exec(header);
-        if (encoded) {
-          try {
-            return decodeURIComponent(encoded[1]);
-          } catch {}
+      // Export progress. Every figure is measured: bytes compressed, bytes uploaded, the
+      // server's own estimate while converting, and bytes downloaded of the known file size.
+      const STEPS = ["compress", "upload", "convert", "download"];
+      const CONVERT_LABELS = { flatten: "Reading columns", write: "Writing rows", finish: "Packaging the file" };
+      const percent = (fraction) => `${Math.floor(fraction * 100)}%`;
+      const fromBase64 = (text) =>
+        Uint8Array.fromBase64 ? Uint8Array.fromBase64(text) : Uint8Array.from(atob(text), (c) => c.charCodeAt(0));
+      let exportRun = null; // { xhr, cancelled } while an export is running
+
+      function timeLeft(seconds) {
+        if (!(seconds >= 2)) return "";
+        return seconds < 90 ? ` · about ${Math.ceil(seconds)} s left` : ` · about ${Math.round(seconds / 60)} min left`;
+      }
+
+      function showStep(step, fraction, text) {
+        const current = STEPS.indexOf(step);
+        els.progressSteps.forEach((item, index) => {
+          item.dataset.state = index < current ? "done" : index === current ? "active" : "";
+        });
+        if (fraction === null) els.progressBar.removeAttribute("value");
+        else els.progressBar.value = fraction;
+        els.progressDetail.textContent = text;
+        const label = els.progressSteps[current].textContent;
+        if (els.progressAnnounce.textContent !== label) els.progressAnnounce.textContent = label;
+      }
+
+      function showServerEvent(event, rows) {
+        if (event.stage === "queued") showStep("convert", null, "Waiting for a free slot: other big files are converting");
+        else if (event.stage === "reading") showStep("convert", null, "Reading your data…");
+        else if (event.stage === "converting") {
+          const label = event.step === "finish" ? CONVERT_LABELS.finish : `${CONVERT_LABELS[event.step]} · ${plural(rows, "row")}`;
+          showStep("convert", event.progress, `${label} · ${percent(event.progress)}${timeLeft(event.seconds_left)}`);
         }
-        const plain = /filename="([^"]+)"/i.exec(header);
-        return plain ? plain[1] : null;
+      }
+
+      // XMLHttpRequest, not fetch: only it reports upload progress. The response is a stream of
+      // JSON lines (progress events, then the file in base64 chunks), read as it arrives.
+      function sendWithProgress({ body, gzip }, run) {
+        return new Promise((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+          run.xhr = xhr;
+          xhr.open("POST", `/export-progress?${queryFor({ filename: els.filename.value })}`);
+          xhr.setRequestHeader("Content-Type", "application/json");
+          if (gzip) xhr.setRequestHeader("Content-Encoding", "gzip");
+          xhr.upload.onprogress = (event) => {
+            if (!event.lengthComputable) return;
+            showStep("upload", event.loaded / event.total, `Uploading ${formatBytes(event.loaded)} of ${formatBytes(event.total)}`);
+          };
+          xhr.upload.onload = () => showStep("convert", null, "Waiting for the server…");
+
+          let offset = 0;
+          let file = null;
+          let failure = null;
+          let received = 0;
+          let rows = 0;
+          const parts = [];
+          const readEvents = () => {
+            if (xhr.status !== 200) return; // an error reply is read once it's complete
+            const text = xhr.responseText;
+            for (let end = text.indexOf("\n", offset); end !== -1; end = text.indexOf("\n", offset)) {
+              const event = JSON.parse(text.slice(offset, end));
+              offset = end + 1;
+              if (event.data !== undefined) {
+                const bytes = fromBase64(event.data);
+                parts.push(bytes);
+                received += bytes.length;
+                showStep("download", received / file.size, `Downloading ${formatBytes(received)} of ${formatBytes(file.size)}`);
+              } else if (event.stage === "file") {
+                file = event;
+                showStep("download", 0, `Downloading ${formatBytes(file.size)}`);
+              } else if (event.stage === "error") {
+                failure = event.detail;
+              } else {
+                rows = event.rows ?? rows;
+                showServerEvent(event, rows);
+              }
+            }
+          };
+          xhr.onprogress = readEvents;
+          xhr.onload = () => {
+            if (xhr.status !== 200) return reject(new Error(errorText(xhr.status, xhr.responseText)));
+            readEvents();
+            if (failure) reject(new Error(failure));
+            else if (!file || received !== file.size) reject(new Error("The connection dropped before the whole file arrived. Please try again."));
+            else resolve({ blob: new Blob(parts, { type: file.type }), name: file.name });
+          };
+          xhr.onerror = () => reject(new TypeError("Network error"));
+          xhr.onabort = () => reject(new DOMException("Export cancelled", "AbortError"));
+          xhr.send(body);
+        });
+      }
+
+      function saveFile(blob, name) {
+        const url = URL.createObjectURL(blob);
+        const link = Object.assign(document.createElement("a"), { href: url, download: name });
+        document.body.append(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 10_000);
       }
 
       async function exportFile() {
         if (els.exportBtn.disabled) return;
+        const run = { xhr: null, cancelled: false };
+        exportRun = run;
         els.exportBtn.disabled = true;
         els.exportBtn.setAttribute("aria-busy", "true");
         const started = Date.now();
-        const tick = () => (els.exportLabel.textContent = `Converting… ${Math.round((Date.now() - started) / 1000)} s`);
+        const elapsed = () => Math.round((Date.now() - started) / 1000);
+        const tick = () => (els.exportLabel.textContent = `Exporting… ${elapsed()} s`);
         tick();
         const timer = setInterval(tick, 1000);
-        setStatus("", "Converting your data…");
+        const reveal = setTimeout(() => (els.progress.hidden = false), 300); // quick exports skip the bar
+        setStatus("", "");
+        showStep("compress", null, "Preparing your data…");
         try {
-          const response = await post("/export-raw", { filename: els.filename.value });
-          if (!response.ok) throw new Error(await errorMessage(response));
-          const blob = await response.blob();
-          const name = filenameFromHeader(response.headers.get("Content-Disposition")) || `export${extension()}`;
-          const url = URL.createObjectURL(blob);
-          const link = Object.assign(document.createElement("a"), { href: url, download: name });
-          document.body.append(link);
-          link.click();
-          link.remove();
-          setTimeout(() => URL.revokeObjectURL(url), 10_000);
-          setStatus("success", `✓ Downloaded ${name} (${formatBytes(blob.size)}).`);
+          const upload = await requestBody((fraction) => showStep("compress", fraction, `Compressing · ${percent(fraction)}`));
+          if (run.cancelled) throw new DOMException("Export cancelled", "AbortError");
+          const { blob, name } = await sendWithProgress(upload, run);
+          saveFile(blob, name);
+          const took = elapsed() >= 2 ? ` in ${elapsed()} s` : "";
+          setStatus("success", `✓ Downloaded ${name} (${formatBytes(blob.size)})${took}.`);
         } catch (error) {
-          const offline = error instanceof TypeError;
-          setStatus("error", offline ? "Couldn't reach the server. Is it running?" : error.message);
+          if (error.name === "AbortError") setStatus("", "Export cancelled.");
+          else setStatus("error", error instanceof TypeError ? "Couldn't reach the server. Is it running?" : error.message);
         } finally {
+          clearTimeout(reveal);
           clearInterval(timer);
+          els.progress.hidden = true;
+          exportRun = null;
           els.exportBtn.removeAttribute("aria-busy");
           syncFormat(false);
           updateExportButton();
@@ -1234,6 +1478,11 @@
       document.querySelectorAll('input[name="format"]').forEach((radio) => radio.addEventListener("change", () => syncFormat()));
       els.readable.addEventListener("change", () => hasInput() && schedulePreview(0));
       els.exportBtn.addEventListener("click", exportFile);
+      $("cancelBtn").addEventListener("click", () => {
+        if (!exportRun) return;
+        exportRun.cancelled = true;
+        exportRun.xhr?.abort(); // the server stops converting when the connection closes
+      });
       $("openBtn").addEventListener("click", () => els.fileInput.click());
       els.fileInput.addEventListener("change", () => {
         loadFile(els.fileInput.files[0]);

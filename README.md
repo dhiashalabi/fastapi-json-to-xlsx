@@ -7,6 +7,7 @@ Turn JSON into a formatted Excel workbook or a CSV file. A FastAPI app with a we
 - One sheet per key: `{"Students": [...], "Courses": [...]}` becomes a two-sheet workbook.
 - Nested objects become columns (`address.city` → **Address City**); ISO dates become real Excel dates.
 - Accepts JSON, JSON Lines, and Python-style literals. Gzip uploads are supported for large data.
+- Live progress for big files: measured upload, conversion and download progress, time left, and Cancel.
 - Safe output: no live formulas, CSV injection escaping, and long IDs kept exact.
 
 ## Run
@@ -24,6 +25,7 @@ Open <http://localhost:8000>. Interactive API docs are at `/docs`.
 | --- | --- | --- |
 | `POST /export` | `{"data": ..., "format": "excel", "filename": "report", "headers": "readable"}` | The file |
 | `POST /export-raw?format=csv&filename=report` | The data itself (optionally gzip) | The file |
+| `POST /export-progress?format=excel&filename=report` | The data itself (optionally gzip) | JSON lines: progress events (share done, time left), then the file in base64 chunks |
 | `POST /preview?format=excel` | The data itself (optionally gzip) | Sheets, columns, first 20 rows, warnings |
 
 `format` is `excel` or `csv`. `headers` is `readable` (`student_name` → `Student Name`) or `original`.
