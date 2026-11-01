@@ -2,55 +2,131 @@
 API routes for the JSON to Excel/CSV converter.
 """
 
-import json
+from collections.abc import Callable
+import os
+from typing import Any
+import zlib
 
-from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import HTMLResponse
-from fastapi.templating import Jinja2Templates
+import anyio
+from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi.responses import StreamingResponse
 
-from .exporters import export_data
-from .models import ExportRequest
+from .exporters import export_data, preview_data
+from .models import ExportFormat, ExportRequest, HeaderStyle
 from .validators import validate_and_parse_data
 
-templates = Jinja2Templates(directory="templates")
+# Unpacked request size limit. Memory use is about 7.5x this while converting.
+MAX_DATA_BYTES = int(os.environ.get("MAX_DATA_MB", "100")) * 1_000_000
+# Conversions are CPU-bound, so under the GIL running more at once only adds memory.
+# Big ones wait for one of 2 slots; small ones skip the queue.
+HEAVY_BYTES = 1_000_000
+_heavy_slots = anyio.CapacityLimiter(2)
+# Lets /docs show a body box for the endpoints that read the raw body themselves.
+RAW_BODY_DOCS = {
+	"requestBody": {
+		"required": True,
+		"description": "JSON, JSON Lines or Python-literal data. May be gzip-compressed "
+		"(send `Content-Encoding: gzip`).",
+		"content": {"application/json": {"schema": {}}},
+	}
+}
 
 router = APIRouter()
 
 
-@router.get("/", response_class=HTMLResponse)
-async def read_root(request: Request):
-	"""Serve the main HTML interface."""
-	return templates.TemplateResponse("index.html", {"request": request})
+def too_large() -> HTTPException:
+	limit = MAX_DATA_BYTES / 1_000_000
+	return HTTPException(
+		status_code=413, detail=f"Data is larger than this server's {limit:g} MB limit."
+	)
+
+
+async def read_body(request: Request) -> str:
+	"""Read the body as text, unpacking gzip, without ever holding more than the limit."""
+	body = bytearray()
+	async for chunk in request.stream():
+		body += chunk
+		if len(body) > MAX_DATA_BYTES:
+			raise too_large()
+	encoding = request.headers.get("content-encoding", "identity").lower()
+	if encoding == "gzip":
+		inflater = zlib.decompressobj(wbits=31)
+		try:
+			body = inflater.decompress(body, MAX_DATA_BYTES + 1)
+		except zlib.error as e:
+			raise HTTPException(
+				status_code=400, detail="Request body is not valid gzip."
+			) from e
+		if len(body) > MAX_DATA_BYTES:
+			raise too_large()
+		if not inflater.eof or inflater.unused_data:
+			raise HTTPException(
+				status_code=400,
+				detail="Request body is incomplete or has several gzip parts.",
+			)
+	elif encoding != "identity":
+		raise HTTPException(
+			status_code=415,
+			detail=f"Unsupported Content-Encoding '{encoding}'. Send plain text or gzip.",
+		)
+	try:
+		return body.decode("utf-8")
+	except UnicodeDecodeError as e:
+		raise HTTPException(
+			status_code=400, detail="Request body must be UTF-8 text."
+		) from e
+
+
+async def run_conversion[T](size: int, job: Callable[[], T]) -> T:
+	"""Run a conversion in a worker thread so the server stays responsive."""
+	return await anyio.to_thread.run_sync(
+		job, limiter=_heavy_slots if size > HEAVY_BYTES else None
+	)
 
 
 @router.post("/export")
-async def export_data_endpoint(request: ExportRequest):
-	"""Export data to Excel or CSV format."""
-	try:
-		data = validate_and_parse_data(request.data)
-		return export_data(data, request.format, request.filename)
-	except Exception as e:
-		raise HTTPException(status_code=500, detail=str(e)) from e
+async def export_data_endpoint(
+	payload: ExportRequest, request: Request
+) -> StreamingResponse:
+	"""Export data to an Excel workbook (one sheet per table) or a CSV file."""
+	size = int(request.headers.get("content-length") or 0)
+	return await run_conversion(
+		size,
+		lambda: export_data(
+			validate_and_parse_data(payload.data),
+			payload.format,
+			payload.filename,
+			payload.headers,
+		),
+	)
 
 
-@router.post("/export-raw")
-async def export_data_raw(request: Request):
-	"""Export data from raw request body (for large data)."""
-	try:
-		body = await request.body()
+@router.post("/export-raw", openapi_extra=RAW_BODY_DOCS)
+async def export_data_raw(
+	request: Request,
+	format_type: ExportFormat = Query("excel", alias="format"),
+	filename: str = Query("exported_data", max_length=200),
+	headers: HeaderStyle = "readable",
+) -> StreamingResponse:
+	"""Export data sent as the raw request body (best for large data and curl)."""
+	text = await read_body(request)
+	return await run_conversion(
+		len(text),
+		lambda: export_data(
+			validate_and_parse_data(text), format_type, filename, headers
+		),
+	)
 
-		try:
-			data = json.loads(body.decode("utf-8"))
-		except json.JSONDecodeError as e:
-			raise HTTPException(
-				status_code=400, detail="Invalid JSON format in request body."
-			) from e
 
-		format_type = request.query_params.get("format", "excel")
-		filename = request.query_params.get("filename", "exported_data")
-
-		data = validate_and_parse_data(data)
-		return export_data(data, format_type, filename)
-
-	except Exception as e:
-		raise HTTPException(status_code=500, detail=str(e)) from e
+@router.post("/preview", openapi_extra=RAW_BODY_DOCS)
+async def preview_endpoint(
+	request: Request,
+	format_type: ExportFormat = Query("excel", alias="format"),
+	headers: HeaderStyle = "readable",
+) -> dict[str, Any]:
+	"""Show the sheets, columns, first 20 rows and any warnings an export would produce."""
+	text = await read_body(request)
+	return await run_conversion(
+		len(text),
+		lambda: preview_data(validate_and_parse_data(text), format_type, headers),
+	)

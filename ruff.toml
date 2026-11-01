@@ -25,7 +25,7 @@ ignore = [
 
 [lint.isort]
 # Sorting order for imports
-known-first-party = ["app"]  # Adjust if your FastAPI app uses a specific module
+known-first-party = ["src"]
 combine-as-imports = true
 force-sort-within-sections = true
 
