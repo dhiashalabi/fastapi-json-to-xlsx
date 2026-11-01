@@ -26,7 +26,7 @@ Open <http://localhost:8000>. Interactive API docs are at `/docs`.
 | `POST /export` | `{"data": ..., "format": "excel", "filename": "report", "headers": "readable"}` | The file |
 | `POST /export-raw?format=csv&filename=report` | The data itself (optionally gzip) | The file |
 | `POST /export-progress?format=excel&filename=report` | The data itself (optionally gzip) | JSON lines: progress events (share done, time left), then the file in base64 chunks |
-| `POST /preview?format=excel` | The data itself (optionally gzip) | Sheets, columns, first 20 rows, warnings |
+| `POST /preview?format=excel&sheet=Students&page=2&page_size=50` | The data itself (optionally gzip) | Sheets, columns, totals, warnings, and one page of rows (`page_size` up to 500; the other sheets get their first page) |
 
 `format` is `excel` or `csv`. `headers` is `readable` (`student_name` → `Student Name`) or `original`.
 

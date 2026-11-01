@@ -164,10 +164,17 @@ async def preview_endpoint(
 	request: Request,
 	format_type: ExportFormat = Query("excel", alias="format"),
 	headers: HeaderStyle = "readable",
+	page: int = Query(1, ge=1),
+	page_size: int = Query(50, ge=1, le=500),
+	sheet: str | None = Query(
+		None, description="The sheet to page through; the first by default."
+	),
 ) -> dict[str, Any]:
-	"""Show the sheets, columns, first 20 rows and any warnings an export would produce."""
+	"""Show the sheets, columns, a page of rows and any warnings an export would produce."""
 	text = await read_body(request)
 	return await run_conversion(
 		len(text),
-		lambda: preview_data(validate_and_parse_data(text), format_type, headers),
+		lambda: preview_data(
+			validate_and_parse_data(text), format_type, headers, page, page_size, sheet
+		),
 	)

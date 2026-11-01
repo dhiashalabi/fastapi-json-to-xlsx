@@ -334,8 +334,43 @@
         border-color: var(--error);
       }
 
-      textarea::placeholder {
+      textarea:placeholder-shown {
+        border-style: dashed;
+      }
+
+      /* Shown while the box is empty; clicks pass through to the box, so pasting still works. */
+      .empty-hint {
+        position: absolute;
+        inset: 0;
+        display: none;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        padding: 24px;
+        text-align: center;
         color: var(--muted);
+        pointer-events: none;
+      }
+
+      textarea:not([hidden]):placeholder-shown ~ .empty-hint {
+        display: flex;
+      }
+
+      .empty-hint svg {
+        color: var(--accent);
+      }
+
+      .empty-hint strong {
+        color: var(--text);
+      }
+
+      .empty-hint button {
+        pointer-events: auto;
+      }
+
+      .hint-types {
+        font-size: 0.8125rem;
       }
 
       .file-card {
@@ -619,6 +654,47 @@
         font-variant-numeric: tabular-nums;
       }
 
+      .preview-loading {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 12px;
+        color: var(--muted);
+        font-size: 0.875rem;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .preview-loading progress {
+        flex: 1;
+      }
+
+      /* While a new page or new data loads, the old rows stay visible but dimmed. */
+      .table-wrap[aria-busy="true"] {
+        opacity: 0.55;
+        transition: opacity 0.2s ease;
+      }
+
+      .pager {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        margin-top: 12px;
+        font-size: 0.875rem;
+      }
+
+      .page-jump input {
+        width: 5em;
+        margin: 0 4px;
+        padding: 4px 6px;
+        border: 1px solid var(--border-strong);
+        border-radius: 6px;
+        background: var(--surface-2);
+        text-align: center;
+        font-variant-numeric: tabular-nums;
+      }
+
       .table-wrap {
         max-height: 520px;
         overflow: auto;
@@ -887,9 +963,17 @@
             spellcheck="false"
             autocomplete="off"
             autocapitalize="off"
-            aria-describedby="inputStatus"
-            placeholder='Paste JSON or JSON Lines here, or drop a file anywhere on the page.&#10;&#10;[{"name": "Ann", "age": 30}, {"name": "Omar", "age": 25}]'
+            aria-describedby="emptyHint inputStatus"
+            placeholder=" "
           ></textarea>
+          <div class="empty-hint" id="emptyHint">
+            <svg viewBox="0 0 24 24" width="36" height="36" aria-hidden="true">
+              <path d="M12 16V4m0 0L7 9m5-5 5 5M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+            <p><strong>Paste JSON here</strong>, or drop a file</p>
+            <button type="button" class="ghost" id="browseBtn">Browse files</button>
+            <p class="hint-types">.json, .jsonl or .txt</p>
+          </div>
           <div class="file-card" id="fileCard" hidden>
             <svg viewBox="0 0 24 24" width="40" height="40" aria-hidden="true">
               <path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8zM14 3v5h5M9 13h6M9 17h6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" />
@@ -976,9 +1060,20 @@
           <h2 id="preview-title">Preview</h2>
           <span class="preview-info" id="previewInfo"></span>
         </div>
+        <div class="preview-loading" id="previewLoading" hidden>
+          <progress id="previewProgress" max="1" aria-label="Loading the preview"></progress>
+          <span id="previewLoadingText"></span>
+        </div>
         <div class="warnings" id="warnings"></div>
         <div class="tabs" id="tabs" role="group" aria-label="Sheets"></div>
         <div class="table-wrap" id="previewBody" tabindex="0" aria-label="Preview table"></div>
+        <nav class="pager" id="pager" aria-label="Preview pages" hidden>
+          <button type="button" class="ghost" id="prevPage" aria-label="Previous page">‹ Prev</button>
+          <label class="page-jump">
+            Page <input type="number" id="pageInput" min="1" inputmode="numeric" /> of <span id="pageCount"></span>
+          </label>
+          <button type="button" class="ghost" id="nextPage" aria-label="Next page">Next ›</button>
+        </nav>
       </section>
     </main>
 
@@ -1002,6 +1097,14 @@
         tabs: $("tabs"),
         previewBody: $("previewBody"),
         previewInfo: $("previewInfo"),
+        previewLoading: $("previewLoading"),
+        previewProgress: $("previewProgress"),
+        previewLoadingText: $("previewLoadingText"),
+        pager: $("pager"),
+        pageInput: $("pageInput"),
+        pageCount: $("pageCount"),
+        prevPage: $("prevPage"),
+        nextPage: $("nextPage"),
         progress: $("progress"),
         progressSteps: [...document.querySelectorAll(".progress-steps li")],
         progressBar: $("progressBar"),
@@ -1039,8 +1142,10 @@
 
       let fileSource = null; // { blob, name } when the input is too big for the text box
       let packed = null; // the last compressed upload, reused while the input is unchanged
+      const PAGE_SIZE = 50;
       let previewTimer;
       let previewController;
+      let previewRun = 0; // only the newest preview request may update the screen
       let preview = null;
       let activeSheet = 0;
       let inputInvalid = false;
@@ -1119,18 +1224,20 @@
       const queryFor = (params = {}) =>
         new URLSearchParams({ format: format(), headers: els.readable.checked ? "readable" : "original", ...params });
 
-      async function post(path, params, signal) {
-        const { body, gzip } = await requestBody();
+      async function post(path, params, signal, onCompress) {
+        const { body, gzip } = await requestBody(onCompress);
         const headers = { "Content-Type": "application/json" };
         if (gzip) headers["Content-Encoding"] = "gzip";
         return fetch(`${path}?${queryFor(params)}`, { method: "POST", headers, body, signal });
       }
 
       // Preview: the server parses exactly as it will for the export, so what you see is what you get.
-      function schedulePreview(delay = 300) {
+      function schedulePreview(delay = 300, page = 1) {
         clearTimeout(previewTimer);
         previewController?.abort();
         if (!hasInput()) {
+          previewRun++;
+          showPreviewLoading(false);
           preview = null;
           inputInvalid = false;
           els.size.textContent = "";
@@ -1141,13 +1248,42 @@
         }
         if (!fileSource) els.size.textContent = formatBytes(new Blob([els.data.value]).size);
         updateExportButton();
-        previewTimer = setTimeout(runPreview, delay);
+        previewTimer = setTimeout(() => runPreview(page), delay);
       }
 
-      async function runPreview() {
+      function showPreviewLoading(visible) {
+        els.previewLoading.hidden = !visible;
+        if (!visible) return els.previewBody.removeAttribute("aria-busy");
+        els.previewBody.setAttribute("aria-busy", "true");
+        if (!preview) els.previewBody.replaceChildren(emptyState("Loading the preview…"));
+      }
+
+      function setPreviewLoading(fraction, text) {
+        if (fraction === null) els.previewProgress.removeAttribute("value");
+        else els.previewProgress.value = fraction;
+        els.previewLoadingText.textContent = text;
+      }
+
+      // The page shown for the active sheet: the one asked for, or the first for other sheets.
+      const currentPage = () => {
+        const sheet = preview?.sheets[activeSheet];
+        return sheet && sheet.name === preview.sheet ? preview.page : 1;
+      };
+
+      async function runPreview(page = 1) {
+        const run = ++previewRun;
+        previewController?.abort();
         previewController = new AbortController();
+        const first = (page - 1) * PAGE_SIZE + 1;
+        const waiting = page > 1 ? `Loading rows ${first.toLocaleString()}–${(first + PAGE_SIZE - 1).toLocaleString()}…` : "Reading your data…";
+        setPreviewLoading(null, waiting);
+        const reveal = setTimeout(() => showPreviewLoading(true), 250); // quick loads skip the bar
+        const sheet = preview?.sheets[activeSheet]?.name;
+        const params = { page, page_size: PAGE_SIZE, ...(sheet ? { sheet } : {}) };
+        const onCompress = (fraction) =>
+          fraction < 1 ? setPreviewLoading(fraction, `Compressing your data · ${percent(fraction)}`) : setPreviewLoading(null, waiting);
         try {
-          const response = await post("/preview", {}, previewController.signal);
+          const response = await post("/preview", params, previewController.signal, onCompress);
           if (!response.ok) {
             preview = null;
             inputInvalid = response.status < 500;
@@ -1155,19 +1291,33 @@
           } else {
             preview = await response.json();
             inputInvalid = false;
-            activeSheet = Math.min(activeSheet, preview.sheets.length - 1);
-            const rows = preview.sheets.reduce((sum, sheet) => sum + sheet.total_rows, 0);
+            activeSheet = Math.max(0, preview.sheets.findIndex((s) => s.name === preview.sheet));
+            const rows = preview.sheets.reduce((sum, s) => sum + s.total_rows, 0);
             const sheets = preview.sheets.length > 1 ? ` · ${plural(preview.sheets.length, "sheet")}` : "";
             setInputStatus("ok", `✓ Valid${sheets} · ${plural(rows, "row")}`);
           }
         } catch (error) {
-          if (error.name === "AbortError") return;
+          if (error.name === "AbortError") return; // a newer request took over
           preview = null;
           inputInvalid = false;
           setInputStatus("error", "Couldn't reach the server to check your data.");
+        } finally {
+          clearTimeout(reveal);
+          if (run === previewRun) showPreviewLoading(false);
         }
         renderPreview();
         updateExportButton();
+      }
+
+      function goToPage(page) {
+        const sheet = preview?.sheets[activeSheet];
+        if (!sheet) return;
+        const pages = Math.max(1, Math.ceil(sheet.total_rows / preview.page_size));
+        const target = Math.min(Math.max(1, Math.trunc(page) || 1), pages);
+        els.pageInput.value = target;
+        if (target === currentPage()) return;
+        clearTimeout(previewTimer);
+        runPreview(target);
       }
 
       function emptyState(text) {
@@ -1182,6 +1332,7 @@
         els.previewBody.replaceChildren();
         els.warnings.replaceChildren();
         els.previewInfo.textContent = "";
+        els.pager.hidden = true;
         if (!preview) {
           const hint = hasInput()
             ? "Fix the problem above to see a preview."
@@ -1220,8 +1371,26 @@
           els.previewBody.append(emptyState("This sheet has no rows."));
           return;
         }
-        const shown = sheet.rows.length < sheet.total_rows ? `first ${sheet.rows.length} of ` : "";
-        els.previewInfo.textContent = `Showing ${shown}${plural(sheet.total_rows, "row")} · ${plural(sheet.columns.length, "column")}`;
+        const page = currentPage();
+        const pages = Math.max(1, Math.ceil(sheet.total_rows / preview.page_size));
+        const first = (page - 1) * preview.page_size + 1;
+        const rows =
+          pages > 1
+            ? `Rows ${first.toLocaleString()}–${(first + sheet.rows.length - 1).toLocaleString()} of ${sheet.total_rows.toLocaleString()}`
+            : plural(sheet.total_rows, "row");
+        els.previewInfo.textContent = `${rows} · ${plural(sheet.columns.length, "column")}`;
+        if (pages > 1) {
+          els.pager.hidden = false;
+          els.pageInput.value = page;
+          els.pageInput.max = pages;
+          els.pageCount.textContent = pages.toLocaleString();
+          els.prevPage.disabled = page <= 1;
+          els.nextPage.disabled = page >= pages;
+        }
+        if (!sheet.rows.length) {
+          els.previewBody.append(emptyState("No rows on this page."));
+          return;
+        }
 
         const table = document.createElement("table");
         const headRow = table.createTHead().insertRow();
@@ -1238,7 +1407,7 @@
           const tr = body.insertRow();
           const num = tr.insertCell();
           num.className = "rownum";
-          num.textContent = index + 1;
+          num.textContent = (first + index).toLocaleString();
           for (const value of row) {
             const td = tr.insertCell();
             if (value === null) continue;
@@ -1437,7 +1606,7 @@
       function syncFormat(refresh = true) {
         els.ext.textContent = extension();
         els.exportLabel.textContent = `Download ${extension()}`;
-        if (refresh && hasInput()) schedulePreview(0);
+        if (refresh && hasInput()) schedulePreview(0, currentPage());
       }
 
       async function loadStars() {
@@ -1476,7 +1645,10 @@
         useFile(new Blob([text], { type: "application/json" }), "Pasted data");
       });
       document.querySelectorAll('input[name="format"]').forEach((radio) => radio.addEventListener("change", () => syncFormat()));
-      els.readable.addEventListener("change", () => hasInput() && schedulePreview(0));
+      els.readable.addEventListener("change", () => hasInput() && schedulePreview(0, currentPage()));
+      els.prevPage.addEventListener("click", () => goToPage(currentPage() - 1));
+      els.nextPage.addEventListener("click", () => goToPage(currentPage() + 1));
+      els.pageInput.addEventListener("change", () => goToPage(Number(els.pageInput.value)));
       els.exportBtn.addEventListener("click", exportFile);
       $("cancelBtn").addEventListener("click", () => {
         if (!exportRun) return;
@@ -1484,6 +1656,7 @@
         exportRun.xhr?.abort(); // the server stops converting when the connection closes
       });
       $("openBtn").addEventListener("click", () => els.fileInput.click());
+      $("browseBtn").addEventListener("click", () => els.fileInput.click());
       els.fileInput.addEventListener("change", () => {
         loadFile(els.fileInput.files[0]);
         els.fileInput.value = "";
